@@ -30,12 +30,12 @@ alley = bpy.data.texts["alley_generator.py"].as_module()
 # Now call the function with your desired parameters.
 final_obj, storefronts = alley.generate_alley(
     num_buildings=8,
-    extrusion_height=2.5,
+    extrusion_height=2,
     min_stories=2,
     max_stories=5,
     min_building_width=2.0,
     max_building_width=4.0,
-    spacing=2.0,
+    spacing=2.0,    
     replace_storefront=True,
     storefront_text_name="storefront.py",
     # The remaining parameters will use their default values.
