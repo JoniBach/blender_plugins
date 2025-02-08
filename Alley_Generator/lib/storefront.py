@@ -139,7 +139,7 @@ class Config:
         object.__setattr__(self, 'scaled_pillar_depth', self.pillar_depth * self.scale)
         object.__setattr__(self, 'scaled_front_face_depth', self.front_face_depth * self.scale)
         object.__setattr__(self, 'scaled_shutter_depth', self.shutter_depth * self.scale)
-        object.__setattr__(self, 'scaled_shutter_closed', self.shutter_closed * self.scale)
+        object.__setattr__(self, 'scaled_shutter_closed', self.shutter_closed)
         object.__setattr__(self, 'shutter_num_cuts', (self.shutter_segments * 2) - 1)
         # Instead of a threshold computed from a pillar edge position, we now use the actual
         # pillar inner edge positions directly in our face assignment logic.
@@ -461,7 +461,7 @@ def extrude_shutter_region(obj: bpy.types.Object, config: Config) -> None:
         bmesh.update_edit_mesh(mesh)
         bm = update_bmesh(obj)
         old_face_indices = {f.index for f in bm.faces}
-        shutter_distance = abs(config.scaled_shutter_extrude_distance) * abs(config.scaled_shutter_closed)
+        shutter_distance = abs(config.scaled_shutter_extrude_distance) * (config.scaled_shutter_closed / 2)
         bpy.ops.mesh.extrude_region_move(TRANSFORM_OT_translate={"value": (0, 0, -shutter_distance)})
         bmesh.update_edit_mesh(mesh)
         bm = update_bmesh(obj)
@@ -539,13 +539,13 @@ def create_empty_storefront(
     sign_depth: float = 0.1,
     sign_face_depth: float = -0.025,
     sign_border_margin: float = 0.01,
-    pillar_width_left: float = 0.2,
-    pillar_width_right: float = 0.2,
+    pillar_width_left: float = 0.1,
+    pillar_width_right: float = 0.1,
     pillar_depth: float = 0.05,
     front_face_depth: float = -0.05,
-    shutter_segments: int = 11,
+    shutter_segments: int = 13,
     shutter_depth: float = 0.005,
-    shutter_closed: float = 0.15
+    shutter_closed: float = 0.2
 ) -> bpy.types.Object:
     """
     Create an empty storefront with the specified parameters.

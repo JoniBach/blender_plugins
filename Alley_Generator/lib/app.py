@@ -16,9 +16,9 @@ storefront_obj = storefront.create_empty_storefront(
     pillar_width_right=0.1,
     pillar_depth=0.06,
     front_face_depth=-0.06,
-    shutter_segments=13,
+    shutter_segments=9,
     shutter_depth=0.006,
-    shutter_closed=0.18
+    shutter_closed=0.2
 )
 
 print("Storefront created successfully:", storefront_obj)
