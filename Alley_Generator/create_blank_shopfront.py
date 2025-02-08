@@ -8,39 +8,60 @@ from mathutils import Vector
 # ==============================================================================
 
 # --- Plane Setup ---
-PLANE_SIZE = 2.0
-PLANE_LOCATION = (0, 0, 0)
-PLANE_ORIENTATION = 90
+# This is now the master value: when you change PLANE_SIZE, everything else scales.
+PLANE_SIZE          = 1  # Change this value to scale the entire component.
+PLANE_LOCATION      = (0, 0, 0)
+PLANE_ORIENTATION   = 90
 
-# --- Base Dimensions ---
-HORIZONTAL_LOOP_Y = 0.5
-VERTICAL_LOOP_X_LEFT = -0.8
-VERTICAL_LOOP_X_RIGHT = 0.8
+# --- Base Dimensions (original) ---
+SIGN_HEIGHT         = 0.25
+SIGN_DEPTH          = 0.1 
+SIGN_FACE_DEPTH     = -0.025
+SIGN_BORDER_MARGIN  = 0.01
 
-# --- Extrusion Parameters ---
-SIGN_DEPTH = 0.2
-PILLAR_DEPTH = 0.1
-SIGN_BORDER_MARGIN = 0.02
-SIGN_FACE_DEPTH = -0.05
-FRONT_FACE_DEPTH = -0.1
-SHUTTER_SEGMENTS = 11
-SHUTTER_DEPTH = 0.01
-SHUTTER_CLOSED = 0.3
+PILLAR_WIDTH_LEFT   = 0.4
+PILLAR_WIDTH_RIGHT  = 0.4
+PILLAR_DEPTH        = 0.05 
 
-# --- Internal/Factory Parameters ---
-PLANE_ROTATION = (math.radians(90), 0, math.radians(PLANE_ORIENTATION))
-SHUTTER_EXTRUDE_DISTANCE = -1.6
-SIDE_EXTRUDE_TRANSLATION = (0, -0.1, 0)
-SHUTTER_BISECT_TOLERANCE = 0.001
-SHUTTER_EDGE_TOLERANCE = 0.01
-SHUTTER_NUM_CUTS = (SHUTTER_SEGMENTS * 2) - 1
-SIDE_Y_THRESHOLD = HORIZONTAL_LOOP_Y
-SIDE_X_THRESHOLD = abs(VERTICAL_LOOP_X_LEFT) * 5.0 / 8.0
-FRONT_FACE_MIN_Y = HORIZONTAL_LOOP_Y * 0.5
-FRONT_FACE_X_RANGE = SIDE_X_THRESHOLD
-TOP_BAR_ASSIGN_THRESHOLD = HORIZONTAL_LOOP_Y - 0.05
+FRONT_FACE_DEPTH    = -0.05
 
-# --- Material Colors ---
+SHUTTER_SEGMENTS    = 11.0
+SHUTTER_DEPTH       = 0.005
+SHUTTER_CLOSED      = 0.15 
+
+# Compute a scale factor relative to the original (base) size of 2.0.
+scale = PLANE_SIZE / 1.0
+
+# --- Base Dimensions (scaled) ---
+SCALED_HORIZONTAL_LOOP_Y        = SIGN_HEIGHT  * scale
+SCALED_VERTICAL_LOOP_X_LEFT     = -PILLAR_WIDTH_LEFT * scale
+SCALED_VERTICAL_LOOP_X_RIGHT    =  PILLAR_WIDTH_RIGHT * scale
+
+# --- Extrusion Parameters (scaled) ---
+SCALED_SIGN_DEPTH               = SIGN_DEPTH   * scale
+SCALED_SIGN_FACE_DEPTH          = SIGN_FACE_DEPTH  * scale
+SCALED_SIGN_BORDER_MARGIN       = SIGN_BORDER_MARGIN  * scale
+
+SCALED_PILLAR_DEPTH             = PILLAR_DEPTH  * scale
+SCALED_FRONT_FACE_DEPTH         = FRONT_FACE_DEPTH * scale
+SCALED_SHUTTER_SEGMENTS         = SHUTTER_SEGMENTS
+SCALED_SHUTTER_DEPTH            = SHUTTER_DEPTH * scale
+SCALED_SHUTTER_CLOSED           = SHUTTER_CLOSED  * scale
+
+# --- Internal/Factory Parameters (scaled where applicable) ---
+PLANE_ROTATION                  = (math.radians(90), 0, math.radians(PLANE_ORIENTATION))
+SHUTTER_EXTRUDE_DISTANCE        = -1.6 * scale
+SIDE_EXTRUDE_TRANSLATION        = (0, -0.1 * scale, 0)
+SHUTTER_BISECT_TOLERANCE        = 0.001 * scale
+SHUTTER_EDGE_TOLERANCE          = 0.01  * scale
+SHUTTER_NUM_CUTS                = (SCALED_SHUTTER_SEGMENTS * 2) - 1
+SIDE_Y_THRESHOLD                = SCALED_HORIZONTAL_LOOP_Y
+SIDE_X_THRESHOLD                = abs(SCALED_VERTICAL_LOOP_X_LEFT) * 5.0 / 8.0
+FRONT_FACE_MIN_Y                = SCALED_HORIZONTAL_LOOP_Y * 0.5
+FRONT_FACE_X_RANGE              = SIDE_X_THRESHOLD
+TOP_BAR_ASSIGN_THRESHOLD        = SCALED_HORIZONTAL_LOOP_Y - 0.05 * scale
+
+# --- Material Colors (unchanged) ---
 COLOR_MAT_SIGN       = (1.0, 0.2, 0.2, 1)
 COLOR_MAT_COLUMN     = (0.2, 1.0, 0.2, 1)
 COLOR_MAT_FRONT      = (0.2, 0.2, 1.0, 1)
@@ -95,12 +116,12 @@ plane_obj = bpy.context.active_object
 bpy.ops.object.mode_set(mode='EDIT')
 bm = bmesh.from_edit_mesh(plane_obj.data)
 
-# Bisect horizontally along Y = HORIZONTAL_LOOP_Y
+# Bisect horizontally along Y = SCALED_HORIZONTAL_LOOP_Y
 geom_all = list(bm.verts) + list(bm.edges) + list(bm.faces)
 bmesh.ops.bisect_plane(
     bm,
     geom=geom_all,
-    plane_co=(0, HORIZONTAL_LOOP_Y, 0),
+    plane_co=(0, SCALED_HORIZONTAL_LOOP_Y, 0),
     plane_no=(0, 1, 0),
     dist=SHUTTER_BISECT_TOLERANCE,
     use_snap_center=False,
@@ -109,7 +130,7 @@ bmesh.ops.bisect_plane(
 )
 
 # Bisect vertically at the left and right positions
-for x_val in [VERTICAL_LOOP_X_LEFT, VERTICAL_LOOP_X_RIGHT]:
+for x_val in [SCALED_VERTICAL_LOOP_X_LEFT, SCALED_VERTICAL_LOOP_X_RIGHT]:
     geom_all = list(bm.verts) + list(bm.edges) + list(bm.faces)
     plane_no = (1, 0, 0) if x_val < 0 else (-1, 0, 0)
     bmesh.ops.bisect_plane(
@@ -152,7 +173,7 @@ mesh.materials.append(mat_shutter)    # index 5
 bpy.ops.object.mode_set(mode='EDIT')
 bm = bmesh.from_edit_mesh(plane_obj.data)
 for face in bm.faces:
-    if face.calc_center_median().y > HORIZONTAL_LOOP_Y:
+    if face.calc_center_median().y > SCALED_HORIZONTAL_LOOP_Y:
         face.select = True
 bmesh.update_edit_mesh(plane_obj.data)
 bpy.ops.mesh.dissolve_faces()
@@ -183,7 +204,7 @@ for face in bm.faces:
     face.select = (face.material_index == 0)
 bmesh.update_edit_mesh(plane_obj.data)
 bpy.ops.mesh.extrude_faces_move()
-bpy.ops.transform.shrink_fatten(value=SIGN_DEPTH, use_even_offset=True)
+bpy.ops.transform.shrink_fatten(value=SCALED_SIGN_DEPTH, use_even_offset=True)
 bpy.ops.object.mode_set(mode='OBJECT')
 
 # ------------------------------------------------------------------------------
@@ -206,7 +227,7 @@ for face in bm.faces:
         face.select = True
 bmesh.update_edit_mesh(plane_obj.data)
 bpy.ops.mesh.extrude_faces_move()
-bpy.ops.transform.shrink_fatten(value=PILLAR_DEPTH, use_even_offset=True)
+bpy.ops.transform.shrink_fatten(value=SCALED_PILLAR_DEPTH, use_even_offset=True)
 bpy.ops.object.mode_set(mode='OBJECT')
 
 # ------------------------------------------------------------------------------
@@ -228,9 +249,9 @@ front_face.select = True
 bmesh.update_edit_mesh(plane_obj.data)
 
 # Inset the face and then extrude it.
-bpy.ops.mesh.inset(thickness=SIGN_BORDER_MARGIN)
+bpy.ops.mesh.inset(thickness=SCALED_SIGN_BORDER_MARGIN)
 bpy.ops.mesh.extrude_faces_move()
-bpy.ops.transform.shrink_fatten(value=SIGN_FACE_DEPTH, use_even_offset=True)
+bpy.ops.transform.shrink_fatten(value=SCALED_SIGN_FACE_DEPTH, use_even_offset=True)
 
 # Assign the resulting face the Mat_Sign_face material.
 bm = bmesh.from_edit_mesh(plane_obj.data)
@@ -251,7 +272,7 @@ for face in bm.faces:
         face.select = True
 bmesh.update_edit_mesh(plane_obj.data)
 bpy.ops.mesh.extrude_faces_indiv()
-bpy.ops.transform.shrink_fatten(value=FRONT_FACE_DEPTH, use_even_offset=True)
+bpy.ops.transform.shrink_fatten(value=SCALED_FRONT_FACE_DEPTH, use_even_offset=True)
 
 # Reassign extruded faces to Mat_Front_face.
 bm = bmesh.from_edit_mesh(plane_obj.data)
@@ -304,7 +325,7 @@ bmesh.update_edit_mesh(plane_obj.data)
 # Extrude the selected region to form the shutter.
 bm = bmesh.from_edit_mesh(plane_obj.data)
 old_face_indices = {f.index for f in bm.faces}
-shutter_distance = abs(SHUTTER_EXTRUDE_DISTANCE) * abs(SHUTTER_CLOSED)
+shutter_distance = abs(SHUTTER_EXTRUDE_DISTANCE) * abs(SCALED_SHUTTER_CLOSED)
 bpy.ops.mesh.extrude_region_move(TRANSFORM_OT_translate={"value": (0, 0, -shutter_distance)})
 bmesh.update_edit_mesh(plane_obj.data)
 bm = bmesh.from_edit_mesh(plane_obj.data)
@@ -384,7 +405,7 @@ bmesh.update_edit_mesh(mesh)
 # Offset the selected shutter edge vertices along Z.
 selected_verts = {v for edge in bm.edges if edge.select for v in edge.verts}
 for v in selected_verts:
-    v.co.z += SHUTTER_DEPTH
+    v.co.z += SCALED_SHUTTER_DEPTH
 bmesh.update_edit_mesh(mesh)
 bpy.ops.object.mode_set(mode='OBJECT')
 
