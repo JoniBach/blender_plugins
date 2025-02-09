@@ -471,6 +471,7 @@ def spawn_neon_sign(sign_face_obj: bpy.types.Object, shop_name: Optional[str] = 
     signage = sign.generate_sign(
         curviness=0.4,
         max_width=max_width,
+        remove_interior=True,
         max_height=max_height,
         location=location,
         rotation=rot,  # Rotation provided as a tuple in degrees.
