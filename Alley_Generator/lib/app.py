@@ -33,16 +33,18 @@ final_obj, storefronts = alley.generate_alley(
     extrusion_height=2,
     min_stories=2,
     max_stories=5,
-    min_building_width=2.0,
+    min_building_width=2,
     max_building_width=4.0,
-    spacing=2.0,    
+    spacing=2,    
     replace_storefront=True,
+    extract_upper_floor=True,
+
     storefront_text_name="storefront.py",
     # The remaining parameters will use their default values.
 )
 
-print("Alley generated successfully:", final_obj)
-print("Storefront objects created:", storefronts)
+# print("Alley generated successfully:", final_obj)
+# print("Storefront objects created:", storefronts)
 
 # # Convert the "alley_generator.py" text block into a module.
 # sign = bpy.data.texts["store_sign.py"].as_module()
@@ -59,3 +61,20 @@ print("Storefront objects created:", storefronts)
 # )
 
 # print("Sign objects created:", signage)
+
+
+# tennancy = bpy.data.texts["tennancy.py"].as_module()
+
+# # Create a window component with custom parameters.
+# window_obj = tennancy.create_blank_tennancy(
+#     plane_size=2.0,
+#     plane_location=(0, 0, 0),
+#     plane_rotation=(90, 0, 0),
+#     margin_left=0.4,
+#     margin_right=0.4,
+#     margin_top=0.2,
+#     margin_bottom=0.2,
+#     extrude_short=0.03,
+#     extrude_long=0.05
+# )
+# print("Window Object:", window_obj.name)
