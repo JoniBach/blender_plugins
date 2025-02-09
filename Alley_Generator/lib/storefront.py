@@ -32,7 +32,7 @@ storefront geometry in Blender. It is configurable via the following parameters:
 Usage Example (from another Blender script):
     from storefront import create_empty_storefront
 
-    my_storefront = create_empty_storefront(
+    storefront_obj, sign_face_obj = create_empty_storefront(
         plane_size=2.0,
         plane_location=(1, 2, 0),
         plane_orientation=45,
@@ -126,10 +126,6 @@ class Config:
         object.__setattr__(self, 'scaled_horizontal_loop_y', (self.plane_size / 2) - (self.sign_height * self.scale))
         # -------------------------------------------------------------------
         # REWORKED PILLAR EDGE LOOP POSITIONS:
-        # Previously, pillar_width_left/right were used directly as the x-coordinate.
-        # Now they represent the width of the pillars. Therefore, the inner edge of the
-        # left pillar is at: left edge of the plane (-plane_size/2) plus pillar_width_left.
-        # Similarly, for the right pillar.
         object.__setattr__(self, 'scaled_vertical_loop_x_left', -(self.plane_size / 2) + (self.pillar_width_left * self.scale))
         object.__setattr__(self, 'scaled_vertical_loop_x_right', (self.plane_size / 2) - (self.pillar_width_right * self.scale))
         # -------------------------------------------------------------------
@@ -204,7 +200,7 @@ def set_material_indices_by_position(bm: bmesh.types.BMesh, config: Config) -> N
     """
     Assign material indices to faces based on their location.
     
-    Faces whose centers are above the bottom of the sign face get the sign border material.
+    Faces whose centers are above the bottom of the sign face region get the sign border material.
     Faces with centers outside the region between the pillar inner edges (i.e. to the far left or right)
     get the column material, while the remaining faces are considered the front.
     """
@@ -318,21 +314,17 @@ def cleanup_extraneous_faces(obj: bpy.types.Object, config: Config) -> None:
     """
     with edit_mode(obj):
         bm = update_bmesh(obj)
-
         # Remove faces fully above the top of the plane (Y > plane_size/2).
         for face in bm.faces:
             if face.calc_center_median().y > (config.plane_size / 2):
                 face.select = True
-
         bmesh.update_edit_mesh(obj.data)
         bpy.ops.mesh.dissolve_faces()
         bmesh.update_edit_mesh(obj.data)
-
         # Dissolve any small remaining faces whose centers lie above the sign face region.
         for face in bm.faces:
             if face.calc_center_median().y > config.scaled_horizontal_loop_y:
                 face.select = True
-
         bmesh.update_edit_mesh(obj.data)
         bpy.ops.mesh.dissolve_faces()
         bmesh.update_edit_mesh(obj.data)
@@ -387,8 +379,6 @@ def inset_and_extrude_front_sign_face(obj: bpy.types.Object, config: Config) -> 
         bm = update_bmesh(obj)
         bpy.ops.mesh.select_all(action='DESELECT')
         # Identify candidate faces for the sign face area.
-        # Now we look for faces within the central X region (between the pillar inner edges)
-        # and whose center is above the bottom boundary of the sign face.
         candidates = [
             face for face in bm.faces
             if (config.scaled_vertical_loop_x_left <= face.calc_center_median().x <= config.scaled_vertical_loop_x_right and
@@ -528,6 +518,45 @@ def create_horizontal_cuts_and_offset_shutter(obj: bpy.types.Object, config: Con
         bmesh.update_edit_mesh(mesh)
 
 # ==============================================================================
+# FUNCTION TO SEPARATE THE SIGN FACE INTO A NEW OBJECT
+# ==============================================================================
+
+def separate_sign_face(obj: bpy.types.Object) -> bpy.types.Object:
+    """
+    Separates the face(s) assigned to Mat_Sign_face (material index 3) from the given object
+    into a new separate object.
+
+    Args:
+        obj: The original storefront object.
+
+    Returns:
+        The new Blender object containing the separated sign face.
+    """
+    # Save the current objects in the scene.
+    old_objects = set(bpy.data.objects)
+    
+    with edit_mode(obj):
+        bm = update_bmesh(obj)
+        # Deselect all faces.
+        for face in bm.faces:
+            face.select = False
+        # Select faces with material index 3 (Mat_Sign_face).
+        for face in bm.faces:
+            if face.material_index == 3:
+                face.select = True
+        bmesh.update_edit_mesh(obj.data)
+        # Separate the selected faces into a new object.
+        bpy.ops.mesh.separate(type='SELECTED')
+    
+    # Identify and return the new object.
+    new_objects = set(bpy.data.objects) - old_objects
+    for new_obj in new_objects:
+        if new_obj.type == 'MESH':
+            return new_obj
+    
+    raise RuntimeError("Failed to separate Mat_Sign_face into a new object.")
+
+# ==============================================================================
 # PUBLIC FUNCTION
 # ==============================================================================
 
@@ -546,12 +575,13 @@ def create_empty_storefront(
     shutter_segments: int = 13,
     shutter_depth: float = 0.005,
     shutter_closed: float = 0.2
-) -> bpy.types.Object:
+) -> Tuple[bpy.types.Object, bpy.types.Object]:
     """
-    Create an empty storefront with the specified parameters.
+    Create an empty storefront with the specified parameters, and separate the
+    sign face (Mat_Sign_face) into its own object.
     
     Returns:
-        The Blender object representing the storefront.
+        A tuple (storefront_object, sign_face_object)
     """
     # Initialize configuration from parameters.
     config = Config(
@@ -585,9 +615,18 @@ def create_empty_storefront(
     extrude_shutter_region(obj, config)
     create_horizontal_cuts_and_offset_shutter(obj, config)
     
+    # Separate the sign face into its own object.
+    sign_face_obj = separate_sign_face(obj)
+    
     print("Storefront creation completed successfully.")
-    return obj
+    return obj, sign_face_obj
 
-# Optionally, allow testing the module directly:
+# ==============================================================================
+# OPTIONALLY, ALLOW TESTING THE MODULE DIRECTLY:
+# ==============================================================================
+
 if __name__ == '__main__':
-    create_empty_storefront()
+    # This call will create the storefront and separate the sign face.
+    storefront_obj, sign_face_obj = create_empty_storefront()
+    print("Storefront Object:", storefront_obj.name)
+    print("Sign Face Object:", sign_face_obj.name)

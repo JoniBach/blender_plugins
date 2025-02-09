@@ -643,6 +643,6 @@ if __name__ == '__main__':
         max_width=4.0,
         max_height=2.0,
         location=(1.0, 2.0, 0.0),
-        rotation=(0.0, 0.0, 45.0)
+        rotation=(0.0, 0.0, 0.0)
     )
     print("Sign objects created:", result)
