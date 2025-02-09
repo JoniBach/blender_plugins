@@ -7,6 +7,21 @@ featuring clean code, adherence to DRY principles, and pure functions where poss
 Usage Example:
     from neon_shop_generator import NeonShopNameGenerator
 
+    # Using a custom shop name.
+    generator = NeonShopNameGenerator(
+        shop_name="Custom Neon Shop",
+        create_outline=True,
+        curviness=0.4,
+        remove_interior=True,
+        create_backing=True,
+        backing_margin=0.1,
+        backing_bevel_depth=0.01,
+        max_width=4.0,
+        max_height=2.0
+    )
+    generator.generate()
+
+    # Or using the randomly generated shop name.
     generator = NeonShopNameGenerator(
         create_outline=True,
         curviness=0.4,
@@ -266,7 +281,8 @@ class NeonShopNameGenerator:
                  backing_margin: float = 0.2,
                  backing_bevel_depth: float = 0.02,
                  max_width: Optional[float] = None,
-                 max_height: Optional[float] = None):
+                 max_height: Optional[float] = None,
+                 shop_name: Optional[str] = None):
         """
         Initialize the generator with configuration parameters.
 
@@ -279,6 +295,7 @@ class NeonShopNameGenerator:
             backing_bevel_depth: Bevel depth for the backing outline.
             max_width: Maximum allowed width (in Blender units) for the generated object.
             max_height: Maximum allowed height (in Blender units) for the generated object.
+            shop_name: Optional custom shop name. If provided, it replaces the randomly generated text.
         """
         self.create_outline = create_outline
         self.curviness = curviness
@@ -288,6 +305,7 @@ class NeonShopNameGenerator:
         self.backing_bevel_depth = backing_bevel_depth
         self.max_width = max_width
         self.max_height = max_height
+        self.shop_name = shop_name  # New parameter for custom shop text.
 
     @staticmethod
     def generate_shop_name() -> str:
@@ -489,7 +507,8 @@ class NeonShopNameGenerator:
         Generate the neon shop name object with optional outline, backing, and dynamic scaling
         to ensure it fits within a container specified by max_width and max_height.
         """
-        shop_name = self.generate_shop_name()
+        # Use the provided shop_name if given, else generate a random one.
+        shop_name = self.shop_name if self.shop_name is not None else self.generate_shop_name()
         # Create text object.
         text_obj = self._create_text_object(shop_name)
         # Convert text to curve.
@@ -529,7 +548,9 @@ class NeonShopNameGenerator:
 # Example Usage (Can be removed or commented out in production)
 # -------------------------------------------------------------------
 if __name__ == '__main__':
+    # Example with custom shop name:
     generator = NeonShopNameGenerator(
+        # shop_name="Custom Neon Shop",
         create_outline=False,
         curviness=0.4,
         remove_interior=True,
