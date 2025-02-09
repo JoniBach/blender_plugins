@@ -18,7 +18,8 @@ Usage Example:
         max_width=4.0,   # Maximum width for the generated neon text.
         max_height=2.0,  # Maximum height for the generated neon text.
         location=(1.0, 2.0, 0.0),
-        rotation=(0.0, 0.0, 45.0)  # 45 degrees rotation around Z
+        rotation=(0.0, 0.0, 45.0),  # 45 degrees rotation around Z
+        shop_name="My Custom Store"  # <-- Custom store name passed as a parameter.
     )
 
     print("Sign objects created:", signage)
@@ -30,30 +31,11 @@ import math  # For converting degrees to radians.
 from mathutils import Vector
 from typing import List, Tuple, Optional, Dict
 
-# -------------------------------------------------------------------
-# Constants: Lists of descriptive words and shop types.
-# -------------------------------------------------------------------
-FIRST_WORDS = [
-    "Flaming", "Cozy", "Golden", "Shiny", "Majestic", "Rustic", "Elegant", "Modern",
-    "Happy", "Ancient", "Royal", "Bright", "Magic", "Dreamy", "Classic", "Urban",
-    "Timeless", "Charming", "Bold", "Vibrant", "Lush", "Peaceful", "Witty", "Hidden",
-    "Velvet", "Silent", "Playful", "Enchanted", "Serene", "Warm", "Gleaming", "Noble",
-    "Festive", "Gentle", "Sunny", "Whimsical", "Lively", "Radiant", "Humble", "Pure",
-    "Epic", "Grand", "Regal", "Mellow", "Sophisticated", "Trendy", "Blissful", "Glorious",
-    "Red", "Blue", "Green", "Yellow", "Silver", "Copper", "Bronze", "Emerald",
-    "Ruby", "Sapphire", "Crimson", "Ivory"
-]
 
-SECOND_WORDS = [
-    "Grill", "Cafe", "Supplies", "Boutique", "Market", "Emporium", "Bakery", "Studio",
-    "Haven", "Den", "Shop", "Corner", "Workshop", "Gallery", "Bar", "Parlor",
-    "Restaurant", "Depot", "House", "Lounge", "Store", "Warehouse", "Inn", "Library",
-    "Arcade", "Hall", "Retreat", "Garden", "Farm", "Oasis", "Tavern", "Pavilion",
-    "Salon", "Bistro", "Deli", "Mart", "Vault", "Alcove", "Forge", "Sanctuary",
-    "Grove", "Terrace", "Arena", "Dock", "Station", "Hub", "Cafe", "Barbers",
-    "Bakery", "Tavern", "Boutique", "Diner", "Market", "Emporium", "Studio", "Gallery",
-    "Inn", "Lounge"
-]
+# -------------------------------------------------------------------
+# External Shop Name Generator Function
+# -------------------------------------------------------------------
+
 
 
 # -------------------------------------------------------------------
@@ -295,7 +277,7 @@ class NeonShopNameGenerator:
         self.remove_interior = remove_interior
         self.max_width = max_width
         self.max_height = max_height
-        self.shop_name = shop_name  # Custom shop text if provided.
+        self.shop_name = shop_name  # Use provided store name if available.
         self.location = location
         # Convert rotation from degrees to radians.
         self.rotation = tuple(math.radians(angle) for angle in rotation)
@@ -303,31 +285,9 @@ class NeonShopNameGenerator:
         self._scale_factor = 1.0
 
     @staticmethod
-    def generate_shop_name() -> str:
-        """
-        Generate a random shop name using predefined word lists.
-
-        Returns:
-            A string representing the shop name.
-        """
-        first_word = random.choice(FIRST_WORDS)
-        second_word = random.choice(SECOND_WORDS)
-        return f"{first_word} {second_word}"
-
-    def _create_text_object(self, name: str,
+    def _create_text_object(name: str,
                             location: Tuple[float, float, float],
                             rotation: Tuple[float, float, float]) -> bpy.types.Object:
-        """
-        Create a Blender text object with the given name, location, and rotation.
-
-        Args:
-            name: The text to display.
-            location: The location for the text object.
-            rotation: The rotation for the text object (Euler angles in radians).
-
-        Returns:
-            The created Blender text object.
-        """
         bpy.ops.object.text_add(location=location, rotation=rotation)
         text_obj = bpy.context.object
         text_obj.data.body = name
@@ -472,8 +432,11 @@ class NeonShopNameGenerator:
                     "outline": <outline object, if created>
                 }
         """
-        # Use the provided shop_name if given, else generate a random one.
-        shop_name = self.shop_name if self.shop_name is not None else self.generate_shop_name()
+        
+        # Convert the "alley_generator.py" text block into a module.
+        store_name_generator = bpy.data.texts["store_name_generator.py"].as_module()
+        # Use the provided shop_name if given; otherwise, generate one.
+        shop_name = self.shop_name if self.shop_name is not None else store_name_generator.generate_shop_name()
         # Create text object at the specified location and rotation.
         text_obj = self._create_text_object(shop_name, self.location, self.rotation)
         # Convert text to curve without modifying its anchor.
@@ -567,6 +530,7 @@ def generate_sign(create_outline: bool = False,
 # -------------------------------------------------------------------
 if __name__ == '__main__':
     # Example usage: adjust parameters as desired.
+    # Here you can pass a custom store name via the shop_name parameter.
     result = generate_sign(
         create_outline=False,
         curviness=0.4,
@@ -574,6 +538,7 @@ if __name__ == '__main__':
         max_width=4.0,
         max_height=2.0,
         location=(0.0, 0.0, 0.0),
-        rotation=(0.0, 0.0, 0.0)
+        rotation=(0.0, 0.0, 0.0),
+        # shop_name="My Custom Store"  # Custom store name provided.
     )
     print("Sign objects created:", result)

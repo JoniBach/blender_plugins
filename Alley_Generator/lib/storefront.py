@@ -25,23 +25,27 @@ Usage Example:
         front_face_depth=-0.06,
         shutter_segments=13,
         shutter_depth=0.006,
-        shutter_closed=0.18
+        shutter_closed=0.18,
+        shop_name="My Custom Store"  # <-- Custom store name provided here.
     )
-    neon_sign_obj = spawn_neon_sign(sign_face_obj)
+    neon_sign_obj = spawn_neon_sign(sign_face_obj, shop_name="My Custom Store")
     print("Neon Sign Object:", neon_sign_obj.name)
 """
 
 import bpy
 import bmesh
 import math
+import random
 from mathutils import Vector
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Tuple, List, Set, Dict
+from typing import Tuple, List, Set, Dict, Optional
 
-# ==============================================================================
+
+
+# ============================================================================== 
 # CONFIGURATION DATA CLASS
-# ==============================================================================
+# ============================================================================== 
 
 @dataclass(frozen=True)
 class Config:
@@ -51,13 +55,12 @@ class Config:
     plane_orientation: float = 90  # degrees
 
     # Base Dimensions (original values)
-    # Note: sign_height now determines the full height of the sign face.
-    sign_height: float = 0.25
+    sign_height: float = 0.25  # full height of the sign face
     sign_depth: float = 0.1
     sign_face_depth: float = -0.025
     sign_border_margin: float = 0.01
 
-    # Pillar widths are now interpreted as the **width** of the pillars.
+    # Pillar widths are the width of the pillars.
     pillar_width_left: float = 0.4
     pillar_width_right: float = 0.4
     pillar_depth: float = 0.05
@@ -77,11 +80,7 @@ class Config:
     # Computed fields (initialized in __post_init__)
     shutter_num_cuts: int = field(init=False)
     scale: float = field(init=False)
-    # ---
-    # Sign face: for a centered plane (with extents ±plane_size/2), the sign face occupies
-    # the region from Y = (plane_size/2 - sign_height*scale) up to Y = plane_size/2.
     scaled_horizontal_loop_y: float = field(init=False)
-    # Pillar inner edges are now computed based on the pillar width.
     scaled_vertical_loop_x_left: float = field(init=False)
     scaled_vertical_loop_x_right: float = field(init=False)
     scaled_sign_depth: float = field(init=False)
@@ -91,25 +90,16 @@ class Config:
     scaled_front_face_depth: float = field(init=False)
     scaled_shutter_depth: float = field(init=False)
     scaled_shutter_closed: float = field(init=False)
-    # We now use the bottom edge of the sign face as the reference for the front sign face.
     front_face_min_y: float = field(init=False)
     top_bar_assign_threshold: float = field(init=False)
     plane_rotation: Tuple[float, float, float] = field(init=False)
     scaled_shutter_extrude_distance: float = field(init=False)
 
     def __post_init__(self):
-        # All dimensions scale with the plane size.
         object.__setattr__(self, 'scale', self.plane_size / 1.0)
-        # For a centered plane, the top edge is at +plane_size/2.
-        # The sign face should be exactly 'sign_height*scale' tall.
-        # Hence, the lower boundary (edge loop) is at:
-        #    Y = (plane_size/2) - (sign_height*scale)
         object.__setattr__(self, 'scaled_horizontal_loop_y', (self.plane_size / 2) - (self.sign_height * self.scale))
-        # -------------------------------------------------------------------
-        # REWORKED PILLAR EDGE LOOP POSITIONS:
         object.__setattr__(self, 'scaled_vertical_loop_x_left', -(self.plane_size / 2) + (self.pillar_width_left * self.scale))
         object.__setattr__(self, 'scaled_vertical_loop_x_right', (self.plane_size / 2) - (self.pillar_width_right * self.scale))
-        # -------------------------------------------------------------------
         object.__setattr__(self, 'scaled_sign_depth', self.sign_depth * self.scale)
         object.__setattr__(self, 'scaled_sign_face_depth', self.sign_face_depth * self.scale)
         object.__setattr__(self, 'scaled_sign_border_margin', self.sign_border_margin * self.scale)
@@ -118,22 +108,17 @@ class Config:
         object.__setattr__(self, 'scaled_shutter_depth', self.shutter_depth * self.scale)
         object.__setattr__(self, 'scaled_shutter_closed', self.shutter_closed)
         object.__setattr__(self, 'shutter_num_cuts', (self.shutter_segments * 2) - 1)
-        # Instead of a threshold computed from a pillar edge position, we now use the actual
-        # pillar inner edge positions directly in our face assignment logic.
         object.__setattr__(self, 'front_face_min_y', self.scaled_horizontal_loop_y)
         object.__setattr__(self, 'top_bar_assign_threshold', self.scaled_horizontal_loop_y)
         object.__setattr__(self, 'plane_rotation', (math.radians(90), 0, math.radians(self.plane_orientation)))
         object.__setattr__(self, 'scaled_shutter_extrude_distance', self.shutter_extrude_distance * self.scale)
 
-# ==============================================================================
-# HELPER FUNCTIONS & CONTEXT MANAGERS
-# ==============================================================================
+# ============================================================================== 
+# HELPER FUNCTIONS & CONTEXT MANAGERS 
+# ============================================================================== 
 
 @contextmanager
 def edit_mode(obj: bpy.types.Object):
-    """
-    Context manager to safely switch into edit mode for an object and return to its previous mode.
-    """
     prev_mode = obj.mode
     bpy.ops.object.mode_set(mode='EDIT')
     try:
@@ -142,17 +127,11 @@ def edit_mode(obj: bpy.types.Object):
         bpy.ops.object.mode_set(mode=prev_mode)
 
 def update_bmesh(obj: bpy.types.Object) -> bmesh.types.BMesh:
-    """
-    Return an updated BMesh for the given object.
-    """
     bm = bmesh.from_edit_mesh(obj.data)
     bmesh.update_edit_mesh(obj.data)
     return bm
 
 def get_or_create_material(mat_name: str, color: Tuple[float, float, float, float]) -> bpy.types.Material:
-    """
-    Retrieve an existing material by name or create a new one with the given color.
-    """
     if mat_name in bpy.data.materials:
         mat = bpy.data.materials[mat_name]
     else:
@@ -167,9 +146,6 @@ def get_or_create_material(mat_name: str, color: Tuple[float, float, float, floa
 def compute_cut_positions(shutter_faces: List[bmesh.types.BMFace],
                           num_cuts: int,
                           tolerance: float) -> List[float]:
-    """
-    Compute and return the Y positions for cuts given shutter faces.
-    """
     shutter_verts: Set[bmesh.types.BMVert] = {v for face in shutter_faces for v in face.verts}
     y_coords = [v.co.y for v in shutter_verts]
     if not y_coords:
@@ -178,45 +154,29 @@ def compute_cut_positions(shutter_faces: List[bmesh.types.BMFace],
     return [min_y + (i + 1) * (max_y - min_y) / (num_cuts + 1) for i in range(num_cuts)]
 
 def set_material_indices_by_position(bm: bmesh.types.BMesh, config: Config) -> None:
-    """
-    Assign material indices to faces based on their location.
-    
-    Faces whose centers are above the bottom of the sign face region get the sign border material.
-    Faces with centers outside the region between the pillar inner edges (i.e. to the far left or right)
-    get the column material, while the remaining faces are considered the front.
-    """
     for face in bm.faces:
         center = face.calc_center_median()
         if center.y >= config.top_bar_assign_threshold:
-            face.material_index = 0  # Sign border (to later receive the inset sign face)
+            face.material_index = 0
         elif center.x < config.scaled_vertical_loop_x_left or center.x > config.scaled_vertical_loop_x_right:
-            face.material_index = 1  # Sides: Mat_Column
+            face.material_index = 1
         else:
-            face.material_index = 2  # Front: Mat_Front
+            face.material_index = 2
 
 def select_faces_by_material(bm: bmesh.types.BMesh, material_index: int) -> None:
-    """
-    Deselect all faces and select only those with the given material index.
-    """
     for face in bm.faces:
         face.select = (face.material_index == material_index)
 
 def assign_material_to_selected_faces(bm: bmesh.types.BMesh, material_index: int) -> None:
-    """
-    Assign the given material index to all currently selected faces.
-    """
     for face in bm.faces:
         if face.select:
             face.material_index = material_index
 
-# ==============================================================================
-# MAIN GEOMETRY CREATION FUNCTIONS
-# ==============================================================================
+# ============================================================================== 
+# MAIN GEOMETRY CREATION FUNCTIONS 
+# ============================================================================== 
 
 def create_base_plane(config: Config) -> bpy.types.Object:
-    """
-    Create the base plane with the specified settings.
-    """
     bpy.ops.mesh.primitive_plane_add(
         size=config.plane_size,
         enter_editmode=False,
@@ -227,14 +187,9 @@ def create_base_plane(config: Config) -> bpy.types.Object:
     return bpy.context.active_object
 
 def bisect_plane_geometry(obj: bpy.types.Object, config: Config) -> None:
-    """
-    Bisect the plane to form loops based on the configuration settings.
-    """
     with edit_mode(obj):
         bm = update_bmesh(obj)
         geom_all = list(bm.verts) + list(bm.edges) + list(bm.faces)
-        # Bisect horizontally along Y = scaled_horizontal_loop_y.
-        # This cut now defines the bottom edge of the sign face.
         bmesh.ops.bisect_plane(
             bm,
             geom=geom_all,
@@ -245,7 +200,6 @@ def bisect_plane_geometry(obj: bpy.types.Object, config: Config) -> None:
             clear_inner=False,
             clear_outer=False
         )
-        # Bisect vertically at the left and right pillar inner edges.
         for x_val in (config.scaled_vertical_loop_x_left, config.scaled_vertical_loop_x_right):
             geom_all = list(bm.verts) + list(bm.edges) + list(bm.faces)
             plane_no = (1, 0, 0) if x_val < 0 else (-1, 0, 0)
@@ -262,10 +216,6 @@ def bisect_plane_geometry(obj: bpy.types.Object, config: Config) -> None:
         bmesh.update_edit_mesh(obj.data)
 
 def create_and_assign_materials(obj: bpy.types.Object, config: Config) -> None:
-    """
-    Create or get the required materials and assign them to the object's material slots.
-    """
-    # Material Colors (hard-coded for now)
     COLOR_MAT_SIGN       = (1.0, 0.2, 0.2, 1)
     COLOR_MAT_COLUMN     = (0.2, 1.0, 0.2, 1)
     COLOR_MAT_FRONT      = (0.2, 0.2, 1.0, 1)
@@ -290,19 +240,14 @@ def create_and_assign_materials(obj: bpy.types.Object, config: Config) -> None:
     mesh.materials.append(mat_shutter)    # index 5
 
 def cleanup_extraneous_faces(obj: bpy.types.Object, config: Config) -> None:
-    """
-    Remove extra faces that lie entirely above the top of the sign face region.
-    """
     with edit_mode(obj):
         bm = update_bmesh(obj)
-        # Remove faces fully above the top of the plane (Y > plane_size/2).
         for face in bm.faces:
             if face.calc_center_median().y > (config.plane_size / 2):
                 face.select = True
         bmesh.update_edit_mesh(obj.data)
         bpy.ops.mesh.dissolve_faces()
         bmesh.update_edit_mesh(obj.data)
-        # Dissolve any small remaining faces whose centers lie above the sign face region.
         for face in bm.faces:
             if face.calc_center_median().y > config.scaled_horizontal_loop_y:
                 face.select = True
@@ -311,18 +256,12 @@ def cleanup_extraneous_faces(obj: bpy.types.Object, config: Config) -> None:
         bmesh.update_edit_mesh(obj.data)
 
 def assign_face_materials(obj: bpy.types.Object, config: Config) -> None:
-    """
-    Assign materials to faces based on their geometric location.
-    """
     with edit_mode(obj):
         bm = update_bmesh(obj)
         set_material_indices_by_position(bm, config)
         bmesh.update_edit_mesh(obj.data)
 
 def extrude_top_bar(obj: bpy.types.Object, config: Config) -> None:
-    """
-    Extrude the sign border (top bar) region.
-    """
     with edit_mode(obj):
         bm = update_bmesh(obj)
         select_faces_by_material(bm, material_index=0)
@@ -332,9 +271,6 @@ def extrude_top_bar(obj: bpy.types.Object, config: Config) -> None:
         bmesh.update_edit_mesh(obj.data)
 
 def extrude_side_columns(obj: bpy.types.Object, config: Config) -> None:
-    """
-    Extrude the side column faces (Mat_Column).
-    """
     mesh = obj.data
     column_mat_index = None
     for i, mat in enumerate(mesh.materials):
@@ -353,13 +289,9 @@ def extrude_side_columns(obj: bpy.types.Object, config: Config) -> None:
         bmesh.update_edit_mesh(obj.data)
 
 def inset_and_extrude_front_sign_face(obj: bpy.types.Object, config: Config) -> None:
-    """
-    Inset and extrude the front sign face, then assign it the Mat_Sign_face material.
-    """
     with edit_mode(obj):
         bm = update_bmesh(obj)
         bpy.ops.mesh.select_all(action='DESELECT')
-        # Identify candidate faces for the sign face area.
         candidates = [
             face for face in bm.faces
             if (config.scaled_vertical_loop_x_left <= face.calc_center_median().x <= config.scaled_vertical_loop_x_right and
@@ -379,9 +311,6 @@ def inset_and_extrude_front_sign_face(obj: bpy.types.Object, config: Config) -> 
         bmesh.update_edit_mesh(obj.data)
 
 def extrude_front_faces(obj: bpy.types.Object, config: Config) -> None:
-    """
-    Extrude the front faces (Mat_Front) and then reassign them to Mat_Front_face.
-    """
     with edit_mode(obj):
         bm = update_bmesh(obj)
         bpy.ops.mesh.select_all(action='DESELECT')
@@ -394,9 +323,6 @@ def extrude_front_faces(obj: bpy.types.Object, config: Config) -> None:
         bmesh.update_edit_mesh(obj.data)
 
 def create_interface_vertex_group(obj: bpy.types.Object) -> None:
-    """
-    Create the "RedBlue_Interface" vertex group containing vertices shared by Mat_Sign and Mat_Front.
-    """
     mesh = obj.data
     v2mats: Dict[int, Set[int]] = {v.index: set() for v in mesh.vertices}
     for poly in mesh.polygons:
@@ -410,9 +336,6 @@ def create_interface_vertex_group(obj: bpy.types.Object) -> None:
     print(f"Created vertex group 'RedBlue_Interface' with {len(interface_verts)} vertices.")
 
 def extrude_shutter_region(obj: bpy.types.Object, config: Config) -> None:
-    """
-    Extrude the shutter region based on the interface vertex group.
-    """
     mesh = obj.data
     vg = obj.vertex_groups.get("RedBlue_Interface")
     if vg is None:
@@ -438,18 +361,14 @@ def extrude_shutter_region(obj: bpy.types.Object, config: Config) -> None:
         bm = update_bmesh(obj)
         new_faces = [f for f in bm.faces if f.index not in old_face_indices]
         for face in new_faces:
-            face.material_index = 5  # Mat_Shutter material
+            face.material_index = 5
         bmesh.update_edit_mesh(mesh)
         bpy.ops.mesh.select_mode(type="FACE")
 
 def create_horizontal_cuts_and_offset_shutter(obj: bpy.types.Object, config: Config) -> None:
-    """
-    Create horizontal cuts in the shutter region and offset alternate edges.
-    """
     mesh = obj.data
     with edit_mode(obj):
         bm = update_bmesh(obj)
-        # Identify the shutter material index.
         shutter_mat_index = None
         for i, mat in enumerate(mesh.materials):
             if mat.name == "Mat_Shutter":
@@ -498,75 +417,54 @@ def create_horizontal_cuts_and_offset_shutter(obj: bpy.types.Object, config: Con
             v.co.z += config.scaled_shutter_depth
         bmesh.update_edit_mesh(mesh)
 
-# ==============================================================================
-# FUNCTION TO SEPARATE THE SIGN FACE INTO A NEW OBJECT
-# ==============================================================================
-
 def separate_sign_face(obj: bpy.types.Object) -> bpy.types.Object:
-    """
-    Separates the face(s) assigned to Mat_Sign_face (material index 3) from the given object
-    into a new separate object.
-
-    Args:
-        obj: The original storefront object.
-
-    Returns:
-        The new Blender object containing the separated sign face.
-    """
-    # Save the current objects in the scene.
     old_objects = set(bpy.data.objects)
-    
     with edit_mode(obj):
         bm = update_bmesh(obj)
-        # Deselect all faces.
         for face in bm.faces:
             face.select = False
-        # Select faces with material index 3 (Mat_Sign_face).
         for face in bm.faces:
             if face.material_index == 3:
                 face.select = True
         bmesh.update_edit_mesh(obj.data)
-        # Separate the selected faces into a new object.
         bpy.ops.mesh.separate(type='SELECTED')
-    
-    # Identify and return the new object.
     new_objects = set(bpy.data.objects) - old_objects
     for new_obj in new_objects:
         if new_obj.type == 'MESH':
             return new_obj
-    
     raise RuntimeError("Failed to separate Mat_Sign_face into a new object.")
 
-# ==============================================================================
-# FUNCTION TO SPAWN A NEON SIGN IN FRONT OF THE SIGN FACE
-# ==============================================================================
+# ============================================================================== 
+# FUNCTION TO SPAWN A NEON SIGN IN FRONT OF THE SIGN FACE 
+# ============================================================================== 
 
-def spawn_neon_sign(sign_face_obj: bpy.types.Object) -> bpy.types.Object:
+def spawn_neon_sign(sign_face_obj: bpy.types.Object, shop_name: Optional[str] = None) -> bpy.types.Object:
     """
     Spawns a neon sign using an external neon sign generation library.
     The neon sign’s maximum width and height are set to match the sign face’s dimensions,
     and its location and rotation are matched to the sign face geometry.
-
+    
+    Optionally, a store name can be provided. If not, a random store name is generated.
+    
     Returns:
         The neon sign object.
     """
-    # Use the sign face's dimensions as the maximum size for the neon sign.
     max_width = sign_face_obj.dimensions.x
     max_height = sign_face_obj.dimensions.y
 
-    # Compute the world-space center of the sign face geometry.
-    # The bound_box is in local coordinates, so we transform its center into world space.
     bbox = [Vector(corner) for corner in sign_face_obj.bound_box]
     center_local = sum(bbox, Vector()) / 8.0
     world_center = sign_face_obj.matrix_world @ center_local
-
-    # Use the computed center as the location.
     location = world_center
 
-    # Convert the sign face's rotation (Euler in radians) to degrees.
     rot = (math.degrees(sign_face_obj.rotation_euler.x),
            math.degrees(sign_face_obj.rotation_euler.y),
            math.degrees(sign_face_obj.rotation_euler.z))
+    
+    store_name_generator = bpy.data.texts["store_name_generator.py"].as_module()
+    
+    if shop_name is None:
+        shop_name = store_name_generator.generate_shop_name()
     
     # Access the neon sign generator module from the text block "store_sign.py".
     sign = bpy.data.texts["store_sign.py"].as_module()
@@ -575,13 +473,14 @@ def spawn_neon_sign(sign_face_obj: bpy.types.Object) -> bpy.types.Object:
         max_width=max_width,
         max_height=max_height,
         location=location,
-        rotation=rot  # Rotation provided as a tuple in degrees.
+        rotation=rot,  # Rotation provided as a tuple in degrees.
+        shop_name=shop_name  # Pass the store name down.
     )
     return signage
 
-# ==============================================================================
-# PUBLIC FUNCTION
-# ==============================================================================
+# ============================================================================== 
+# PUBLIC FUNCTION 
+# ============================================================================== 
 
 def create_empty_storefront(
     plane_size: float = 1.0,
@@ -597,16 +496,18 @@ def create_empty_storefront(
     front_face_depth: float = -0.05,
     shutter_segments: int = 13,
     shutter_depth: float = 0.005,
-    shutter_closed: float = 0.2
+    shutter_closed: float = 0.2,
+    shop_name: Optional[str] = None  # New parameter for custom store name
 ) -> Tuple[bpy.types.Object, bpy.types.Object]:
     """
     Create an empty storefront with the specified parameters, and separate the
     sign face (Mat_Sign_face) into its own object.
     
+    Optionally, a store name can be provided to be used by the neon sign generator.
+    
     Returns:
         A tuple (storefront_object, sign_face_object)
     """
-    # Initialize configuration from parameters.
     config = Config(
         plane_size=plane_size,
         plane_location=plane_location,
@@ -623,8 +524,6 @@ def create_empty_storefront(
         shutter_depth=shutter_depth,
         shutter_closed=shutter_closed
     )
-    
-    # Create and process the geometry.
     obj = create_base_plane(config)
     bisect_plane_geometry(obj, config)
     create_and_assign_materials(obj, config)
@@ -637,25 +536,17 @@ def create_empty_storefront(
     create_interface_vertex_group(obj)
     extrude_shutter_region(obj, config)
     create_horizontal_cuts_and_offset_shutter(obj, config)
-    
-    # Separate the sign face into its own object.
     sign_face_obj = separate_sign_face(obj)
-    
-    # Spawn a neon sign in front of the sign face.
-    neon_sign_obj = spawn_neon_sign(sign_face_obj)
+    neon_sign_obj = spawn_neon_sign(sign_face_obj, shop_name=shop_name)
     print("Neon Sign Object:", neon_sign_obj)
-    
     print("Storefront creation completed successfully.")
     return obj, sign_face_obj
 
-# ==============================================================================
+# ============================================================================== 
 # OPTIONALLY, ALLOW TESTING THE MODULE DIRECTLY:
-# ==============================================================================
+# ============================================================================== 
 
 if __name__ == '__main__':
-    # Create the storefront and separate the sign face.
     storefront_obj, sign_face_obj = create_empty_storefront()
     print("Storefront Object:", storefront_obj.name)
     print("Sign Face Object:", sign_face_obj.name)
-    
-

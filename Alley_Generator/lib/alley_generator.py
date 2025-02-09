@@ -330,7 +330,7 @@ def _assign_wire_material(wire_objs: List[bpy.types.Object], mat_wire: bpy.types
 # Storefront Replacement
 # -------------------------------------------------------------------------------
 
-def _replace_storefront_faces(final_obj: bpy.types.Object, storefront_module) -> List[bpy.types.Object]:
+def _replace_storefront_faces(final_obj: bpy.types.Object, storefront_module, initial_seed: int) -> List[bpy.types.Object]:
     area_threshold = 0.05
     bpy.context.view_layer.objects.active = final_obj
     bpy.ops.object.mode_set(mode='EDIT')
@@ -367,6 +367,10 @@ def _replace_storefront_faces(final_obj: bpy.types.Object, storefront_module) ->
     bmesh.update_edit_mesh(final_obj.data)
     bpy.ops.object.mode_set(mode='OBJECT')
     storefront_objects = []
+    store_name_generator = bpy.data.texts["store_name_generator.py"].as_module()
+
+    # Start with the provided seed and increment it for each storefront.
+    current_seed = initial_seed
     for data in storefront_faces_data:
         storefront_obj = storefront_module.create_empty_storefront(
             plane_size=data['plane_size'],
@@ -382,10 +386,12 @@ def _replace_storefront_faces(final_obj: bpy.types.Object, storefront_module) ->
             front_face_depth=-0.06,
             shutter_segments=9,
             shutter_depth=0.006,
-            shutter_closed=0.2
+            shutter_closed=0.2,
+            shop_name=store_name_generator.generate_shop_name(seed=current_seed)
         )
         print("Storefront created successfully:", storefront_obj)
         storefront_objects.append(storefront_obj)
+        current_seed += 1  # Increment the seed for the next storefront.
     return storefront_objects
 
 # -------------------------------------------------------------------------------
@@ -509,7 +515,8 @@ def generate_alley(
             print(f"Error: '{config.storefront_text_name}' text block not found.")
             storefront_module = None
         if storefront_module:
-            storefront_objects = _replace_storefront_faces(final_building_obj, storefront_module)
+            # Pass the alley's random_seed as the starting seed for storefront names.
+            storefront_objects = _replace_storefront_faces(final_building_obj, storefront_module, config.random_seed)
 
     return final_building_obj, storefront_objects
 
