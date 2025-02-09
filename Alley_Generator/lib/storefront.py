@@ -278,7 +278,7 @@ def create_and_assign_materials(obj: bpy.types.Object, config: Config) -> None:
     mat_front      = get_or_create_material("Mat_Front", COLOR_MAT_FRONT)
     mat_sign_face  = get_or_create_material("Mat_Sign_face", COLOR_MAT_SIGN_FACE)
     mat_front_face = get_or_create_material("Mat_Front_face", COLOR_MAT_FRONT_FACE)
-    mat_shutter    = get_or_create_material("Shutter", COLOR_SHUTTER)
+    mat_shutter    = get_or_create_material("Mat_Shutter", COLOR_SHUTTER)
 
     mesh = obj.data
     mesh.materials.clear()
@@ -438,7 +438,7 @@ def extrude_shutter_region(obj: bpy.types.Object, config: Config) -> None:
         bm = update_bmesh(obj)
         new_faces = [f for f in bm.faces if f.index not in old_face_indices]
         for face in new_faces:
-            face.material_index = 5  # Shutter material
+            face.material_index = 5  # Mat_Shutter material
         bmesh.update_edit_mesh(mesh)
         bpy.ops.mesh.select_mode(type="FACE")
 
@@ -452,11 +452,11 @@ def create_horizontal_cuts_and_offset_shutter(obj: bpy.types.Object, config: Con
         # Identify the shutter material index.
         shutter_mat_index = None
         for i, mat in enumerate(mesh.materials):
-            if mat.name == "Shutter":
+            if mat.name == "Mat_Shutter":
                 shutter_mat_index = i
                 break
         if shutter_mat_index is None:
-            raise ValueError("Shutter material not found on the object!")
+            raise ValueError("Mat_Shutter material not found on the object!")
         shutter_faces = [face for face in bm.faces if face.material_index == shutter_mat_index]
         if not shutter_faces:
             raise ValueError("No shutter faces found!")

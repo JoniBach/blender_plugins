@@ -360,45 +360,53 @@ class NeonShopNameGenerator:
     @staticmethod
     def _create_neon_material() -> bpy.types.Material:
         """
-        Create a neon emission material.
+        Retrieve (or create if needed) the neon emission material.
+        This material uses a texture/material named 'Mat_Neon_Tubes' so that all signs share the same material.
 
         Returns:
             A Blender material configured for neon emission.
         """
-        material = bpy.data.materials.new(name="NeonMaterial")
-        material.use_nodes = True
-        nodes = material.node_tree.nodes
-        links = material.node_tree.links
-        # Clear existing nodes.
-        for node in list(nodes):
-            nodes.remove(node)
-        emission_node = nodes.new(type='ShaderNodeEmission')
-        emission_node.inputs[0].default_value = (1.0, 0.2, 0.8, 1.0)  # Pink neon color.
-        emission_node.inputs[1].default_value = 5.0  # Emission strength.
-        output_node = nodes.new(type='ShaderNodeOutputMaterial')
-        links.new(emission_node.outputs[0], output_node.inputs[0])
+        mat_name = "Mat_Neon_Tubes"
+        material = bpy.data.materials.get(mat_name)
+        if material is None:
+            material = bpy.data.materials.new(name=mat_name)
+            material.use_nodes = True
+            nodes = material.node_tree.nodes
+            links = material.node_tree.links
+            # Clear existing nodes.
+            for node in list(nodes):
+                nodes.remove(node)
+            emission_node = nodes.new(type='ShaderNodeEmission')
+            emission_node.inputs[0].default_value = (1.0, 0.2, 0.8, 1.0)  # Pink neon color.
+            emission_node.inputs[1].default_value = 5.0  # Emission strength.
+            output_node = nodes.new(type='ShaderNodeOutputMaterial')
+            links.new(emission_node.outputs[0], output_node.inputs[0])
         return material
 
     @staticmethod
     def _create_outline_material() -> bpy.types.Material:
         """
-        Create an outline material for the duplicated curve.
+        Retrieve (or create if needed) the outline material for the duplicated curve.
+        This ensures that the outline material is shared between signs.
 
         Returns:
             A Blender material configured for an outline appearance.
         """
-        material = bpy.data.materials.new(name="OutlineMaterial")
-        material.use_nodes = True
-        nodes = material.node_tree.nodes
-        links = material.node_tree.links
-        # Clear existing nodes.
-        for node in list(nodes):
-            nodes.remove(node)
-        principled_bsdf = nodes.new(type='ShaderNodeBsdfPrincipled')
-        principled_bsdf.inputs['Base Color'].default_value = (0.05, 0.05, 0.05, 1.0)  # Dark gray.
-        principled_bsdf.inputs['Roughness'].default_value = 0.7
-        output_node = nodes.new(type='ShaderNodeOutputMaterial')
-        links.new(principled_bsdf.outputs[0], output_node.inputs[0])
+        mat_name = "Mat_Neon_Outline"
+        material = bpy.data.materials.get(mat_name)
+        if material is None:
+            material = bpy.data.materials.new(name=mat_name)
+            material.use_nodes = True
+            nodes = material.node_tree.nodes
+            links = material.node_tree.links
+            # Clear existing nodes.
+            for node in list(nodes):
+                nodes.remove(node)
+            principled_bsdf = nodes.new(type='ShaderNodeBsdfPrincipled')
+            principled_bsdf.inputs['Base Color'].default_value = (0.05, 0.05, 0.05, 1.0)  # Dark gray.
+            principled_bsdf.inputs['Roughness'].default_value = 0.7
+            output_node = nodes.new(type='ShaderNodeOutputMaterial')
+            links.new(principled_bsdf.outputs[0], output_node.inputs[0])
         return material
 
     @staticmethod
