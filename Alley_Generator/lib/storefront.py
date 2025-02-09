@@ -220,7 +220,7 @@ def create_and_assign_materials(obj: bpy.types.Object, config: Config) -> None:
     COLOR_MAT_COLUMN     = (0.2, 1.0, 0.2, 1)
     COLOR_MAT_FRONT      = (0.2, 0.2, 1.0, 1)
     COLOR_MAT_SIGN_FACE  = (1.0, 0.4, 0.4, 1)
-    COLOR_MAT_FRONT_FACE = (0.4, 0.4, 1.0, 1)
+    COLOR_MAT_FRONT_FACE = (1.0, 1.0, 1.0, 1)
     COLOR_SHUTTER        = (0.8, 0.8, 0.2, 1)
 
     mat_sign       = get_or_create_material("Mat_Sign", COLOR_MAT_SIGN)
