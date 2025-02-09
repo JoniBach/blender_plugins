@@ -6,9 +6,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Tuple, Dict
 
-# ==============================================================================
-# SECTION 1: CONFIGURATION DATA CLASS
-# ==============================================================================
+# ============================================================================== 
+# SECTION 1: CONFIGURATION DATA CLASS 
+# ============================================================================== 
 @dataclass(frozen=True)
 class WindowConfig:
     plane_size: float = 2.0
@@ -30,9 +30,9 @@ class WindowConfig:
     color_margin_long: Tuple[float, float, float, float] = (1.0, 0.0, 0.0, 1.0)
     color_margin_short: Tuple[float, float, float, float] = (0.0, 0.0, 1.0, 1.0)
 
-# ==============================================================================
-# SECTION 2: HELPER FUNCTIONS & CONTEXT MANAGERS
-# ==============================================================================
+# ============================================================================== 
+# SECTION 2: HELPER FUNCTIONS & CONTEXT MANAGERS 
+# ============================================================================== 
 @contextmanager
 def edit_mode(obj: bpy.types.Object):
     """A context manager to temporarily set the object into EDIT mode."""
@@ -50,15 +50,29 @@ def update_bmesh(obj: bpy.types.Object) -> bmesh.types.BMesh:
     return bm
 
 def get_or_create_material(mat_name: str, color: Tuple[float, float, float, float]) -> bpy.types.Material:
-    """Retrieve an existing material or create a new one with the specified base color."""
+    """
+    Retrieve an existing material or create a new one with the specified base color.
+    The function also sets the viewport display color so that the colors show up in Solid mode.
+    """
     mat = bpy.data.materials.get(mat_name)
     if mat is None:
         mat = bpy.data.materials.new(name=mat_name)
         mat.use_nodes = True
+        # Set the base color in the Principled BSDF node.
         for node in mat.node_tree.nodes:
             if node.type == 'BSDF_PRINCIPLED':
                 node.inputs["Base Color"].default_value = color
                 break
+        # Set the diffuse_color used for viewport display.
+        mat.diffuse_color = color
+    else:
+        # If the material already exists, update its color settings.
+        if mat.use_nodes:
+            for node in mat.node_tree.nodes:
+                if node.type == 'BSDF_PRINCIPLED':
+                    node.inputs["Base Color"].default_value = color
+                    break
+        mat.diffuse_color = color
     return mat
 
 def extrude_faces_by_material(obj: bpy.types.Object, material_index: int, extrude_amount: float) -> None:
@@ -226,9 +240,9 @@ def create_base_plane(config: WindowConfig) -> bpy.types.Object:
     obj.name = "Window_Component"
     return obj
 
-# ==============================================================================
-# SECTION 3: MAIN GEOMETRY CREATION FUNCTION
-# ==============================================================================
+# ============================================================================== 
+# SECTION 3: MAIN GEOMETRY CREATION FUNCTION 
+# ============================================================================== 
 def create_blank_tennancy(
     plane_size: float = 2.0,
     plane_location: Tuple[float, float, float] = (0, 0, 0),
@@ -309,9 +323,9 @@ def create_blank_tennancy(
     print("Window component created successfully.")
     return obj
 
-# ==============================================================================
-# MODULE TESTING (Run when executing the script directly)
-# ==============================================================================
+# ============================================================================== 
+# MODULE TESTING (Run when executing the script directly) 
+# ============================================================================== 
 if __name__ == '__main__':
     window_obj = create_blank_tennancy(
         plane_size=2.0,
