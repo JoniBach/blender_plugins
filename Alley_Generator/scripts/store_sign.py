@@ -7,7 +7,8 @@ featuring clean code, adherence to DRY principles, and pure functions where poss
 Usage Example:
     from neon_shop_generator import NeonShopNameGenerator
 
-    # Using a custom shop name.
+    # Using a custom shop name with specific location and rotation.
+    # Note: Rotation values are provided in degrees.
     generator = NeonShopNameGenerator(
         shop_name="Custom Neon Shop",
         create_outline=True,
@@ -17,7 +18,9 @@ Usage Example:
         backing_margin=0.1,
         backing_bevel_depth=0.01,
         max_width=4.0,
-        max_height=2.0
+        max_height=2.0,
+        location=(1.0, 2.0, 0.0),
+        rotation=(0.0, 0.0, 45.0)  # 45 degrees rotation around Z
     )
     generator.generate()
 
@@ -30,13 +33,16 @@ Usage Example:
         backing_margin=0.1,
         backing_bevel_depth=0.01,
         max_width=4.0,
-        max_height=2.0
+        max_height=2.0,
+        location=(0.0, 0.0, 0.0),
+        rotation=(0.0, 0.0, 0.0)
     )
     generator.generate()
 """
 
 import bpy
 import random
+import math  # For converting degrees to radians.
 from mathutils import Vector
 from typing import List, Tuple, Optional
 
@@ -270,7 +276,11 @@ def remove_interior_shapes(curve_obj: bpy.types.Object, area_factor: float = 1.5
 
 class NeonShopNameGenerator:
     """
-    A generator for creating neon shop name objects with optional outline, backing, and dynamic scaling in Blender.
+    A generator for creating neon shop name objects with optional outline, backing, dynamic scaling,
+    rotation, and location in Blender.
+
+    Note:
+        The rotation parameter is expected in degrees. It will be converted to radians internally.
     """
 
     def __init__(self,
@@ -282,7 +292,9 @@ class NeonShopNameGenerator:
                  backing_bevel_depth: float = 0.02,
                  max_width: Optional[float] = None,
                  max_height: Optional[float] = None,
-                 shop_name: Optional[str] = None):
+                 shop_name: Optional[str] = None,
+                 location: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+                 rotation: Tuple[float, float, float] = (0.0, 0.0, 0.0)):
         """
         Initialize the generator with configuration parameters.
 
@@ -296,6 +308,9 @@ class NeonShopNameGenerator:
             max_width: Maximum allowed width (in Blender units) for the generated object.
             max_height: Maximum allowed height (in Blender units) for the generated object.
             shop_name: Optional custom shop name. If provided, it replaces the randomly generated text.
+            location: The (x, y, z) location where the neon shop name will be placed.
+            rotation: The (x, y, z) Euler rotation in degrees for the neon shop name.
+                      (It will be converted to radians internally.)
         """
         self.create_outline = create_outline
         self.curviness = curviness
@@ -305,7 +320,10 @@ class NeonShopNameGenerator:
         self.backing_bevel_depth = backing_bevel_depth
         self.max_width = max_width
         self.max_height = max_height
-        self.shop_name = shop_name  # New parameter for custom shop text.
+        self.shop_name = shop_name  # Custom shop text if provided.
+        self.location = location
+        # Convert rotation from degrees to radians.
+        self.rotation = tuple(math.radians(angle) for angle in rotation)
 
     @staticmethod
     def generate_shop_name() -> str:
@@ -319,19 +337,21 @@ class NeonShopNameGenerator:
         second_word = random.choice(SECOND_WORDS)
         return f"{first_word} {second_word}"
 
-    @staticmethod
-    def _create_text_object(name: str, location: Tuple[float, float, float] = (0, 0, 0)) -> bpy.types.Object:
+    def _create_text_object(self, name: str,
+                            location: Tuple[float, float, float],
+                            rotation: Tuple[float, float, float]) -> bpy.types.Object:
         """
-        Create a Blender text object with the given name.
+        Create a Blender text object with the given name, location, and rotation.
 
         Args:
             name: The text to display.
             location: The location for the text object.
+            rotation: The rotation for the text object (Euler angles in radians).
 
         Returns:
             The created Blender text object.
         """
-        bpy.ops.object.text_add(location=location)
+        bpy.ops.object.text_add(location=location, rotation=rotation)
         text_obj = bpy.context.object
         text_obj.data.body = name
         text_obj.name = name
@@ -497,20 +517,22 @@ class NeonShopNameGenerator:
 
         backing_obj = bpy.data.objects.new(f"{shop_name} Outline", backing_curve_data)
         bpy.context.collection.objects.link(backing_obj)
+        # Set the backing object's location and rotation to match the primary curve.
         backing_obj.location = curve_obj.location.copy()
         backing_obj.location.z = curve_obj.location.z - 0.05
+        backing_obj.rotation_euler = curve_obj.rotation_euler.copy()  # Copy rotation.
         self._assign_material(backing_obj, self._create_outline_material())
         return backing_obj
 
     def generate(self) -> None:
         """
-        Generate the neon shop name object with optional outline, backing, and dynamic scaling
-        to ensure it fits within a container specified by max_width and max_height.
+        Generate the neon shop name object with optional outline, backing, rotation,
+        location, and dynamic scaling to ensure it fits within a container specified by max_width and max_height.
         """
         # Use the provided shop_name if given, else generate a random one.
         shop_name = self.shop_name if self.shop_name is not None else self.generate_shop_name()
-        # Create text object.
-        text_obj = self._create_text_object(shop_name)
+        # Create text object at the specified location and rotation.
+        text_obj = self._create_text_object(shop_name, self.location, self.rotation)
         # Convert text to curve.
         curve_obj = self._convert_text_to_curve(text_obj)
         # Adjust bezier handles.
@@ -548,7 +570,8 @@ class NeonShopNameGenerator:
 # Example Usage (Can be removed or commented out in production)
 # -------------------------------------------------------------------
 if __name__ == '__main__':
-    # Example with custom shop name:
+    # Example with custom shop name and explicit location/rotation:
+    # Rotation values are provided in degrees.
     generator = NeonShopNameGenerator(
         # shop_name="Custom Neon Shop",
         create_outline=False,
@@ -558,6 +581,8 @@ if __name__ == '__main__':
         backing_margin=0.1,
         backing_bevel_depth=0.01,
         max_width=4.0,   # Maximum width for the generated neon text.
-        max_height=2.0   # Maximum height for the generated neon text.
+        max_height=2.0,  # Maximum height for the generated neon text.
+        location=(1.0, 2.0, 0.0),
+        rotation=(0.0, 0.0, 45.0)  # 45 degrees rotation around Z
     )
     generator.generate()
