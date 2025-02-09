@@ -15,9 +15,6 @@ Usage Example:
         create_outline=False,
         curviness=0.4,
         remove_interior=True,
-        create_backing=True,
-        backing_margin=0.1,
-        backing_bevel_depth=0.01,
         max_width=4.0,   # Maximum width for the generated neon text.
         max_height=2.0,  # Maximum height for the generated neon text.
         location=(1.0, 2.0, 0.0),
@@ -263,8 +260,8 @@ def remove_interior_shapes(curve_obj: bpy.types.Object, area_factor: float = 1.5
 
 class NeonShopNameGenerator:
     """
-    A generator for creating neon shop name objects with optional outline, backing,
-    dynamic scaling, rotation, and location in Blender.
+    A generator for creating neon shop name objects with optional outline, dynamic scaling,
+    rotation, and location in Blender.
 
     Note:
         The rotation parameter is expected in degrees. It will be converted to radians internally.
@@ -274,9 +271,6 @@ class NeonShopNameGenerator:
                  create_outline: bool = False,
                  curviness: float = 0.1,
                  remove_interior: bool = False,
-                 create_backing: bool = True,
-                 backing_margin: float = 0.2,
-                 backing_bevel_depth: float = 0.02,
                  max_width: Optional[float] = None,
                  max_height: Optional[float] = None,
                  shop_name: Optional[str] = None,
@@ -289,9 +283,6 @@ class NeonShopNameGenerator:
             create_outline: Whether to duplicate the curve for an outline effect.
             curviness: Factor controlling bezier handle rounding.
             remove_interior: Whether to remove interior hole shapes.
-            create_backing: Whether to create a backing outline behind the neon text.
-            backing_margin: Offset distance for the backing outline.
-            backing_bevel_depth: Bevel depth for the backing outline.
             max_width: Maximum allowed width (in Blender units) for the generated object.
             max_height: Maximum allowed height (in Blender units) for the generated object.
             shop_name: Optional custom shop name. If provided, it replaces the randomly generated text.
@@ -302,15 +293,14 @@ class NeonShopNameGenerator:
         self.create_outline = create_outline
         self.curviness = curviness
         self.remove_interior = remove_interior
-        self.create_backing = create_backing
-        self.backing_margin = backing_margin
-        self.backing_bevel_depth = backing_bevel_depth
         self.max_width = max_width
         self.max_height = max_height
         self.shop_name = shop_name  # Custom shop text if provided.
         self.location = location
         # Convert rotation from degrees to radians.
         self.rotation = tuple(math.radians(angle) for angle in rotation)
+        # This attribute will store the scale factor applied in _scale_to_fit.
+        self._scale_factor = 1.0
 
     @staticmethod
     def generate_shop_name() -> str:
@@ -353,15 +343,18 @@ class NeonShopNameGenerator:
     @staticmethod
     def _convert_text_to_curve(text_obj: bpy.types.Object) -> bpy.types.Object:
         """
-        Convert a text object to a curve object.
-
-        Args:
-            text_obj: The Blender text object.
-
+        Convert a text object to a curve object without modifying its anchor.
+        In this version we do not re-center the geometry—the text's origin remains at its
+        defined anchor point.
+        
         Returns:
             The converted curve object.
         """
+        # Ensure that the text is set to use its anchor.
+        text_obj.data.align_x = 'CENTER'
+        text_obj.data.align_y = 'CENTER'
         bpy.ops.object.convert(target='CURVE')
+        # Do not call origin_set; leave the object's origin at the anchor.
         return bpy.context.object
 
     @staticmethod
@@ -389,7 +382,7 @@ class NeonShopNameGenerator:
     @staticmethod
     def _create_outline_material() -> bpy.types.Material:
         """
-        Create an outline material for the backing object.
+        Create an outline material for the duplicated curve.
 
         Returns:
             A Blender material configured for an outline appearance.
@@ -426,14 +419,15 @@ class NeonShopNameGenerator:
         """
         Scale the given object so that its dimensions do not exceed the max_width and max_height
         (if specified). This helps ensure that the generated neon text fits within a parent container.
+        The applied scale factor is stored for later use.
 
         Args:
             obj: The Blender object to scale.
         """
         if self.max_width is None and self.max_height is None:
+            self._scale_factor = 1.0
             return
 
-        # Update the scene so that the object's dimensions are current.
         bpy.context.view_layer.update()
         dims = obj.dimensions
         scale_factors = []
@@ -445,10 +439,9 @@ class NeonShopNameGenerator:
 
         if scale_factors:
             factor = min(scale_factors)
+            self._scale_factor = factor
             obj.scale *= factor
             bpy.context.view_layer.objects.active = obj
-
-            # For 2D curves, Blender does not allow applying location or rotation.
             if obj.type == 'CURVE' and obj.data.dimensions == '2D':
                 original_dimension = obj.data.dimensions
                 obj.data.dimensions = '3D'
@@ -456,79 +449,26 @@ class NeonShopNameGenerator:
                 obj.data.dimensions = original_dimension
             else:
                 bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-
-    def _create_backing_outline(self, curve_obj: bpy.types.Object, shop_name: str) -> Optional[bpy.types.Object]:
-        """
-        Create a backing outline that traces the text path.
-
-        Args:
-            curve_obj: The primary neon curve object.
-            shop_name: The shop name used for naming the outline object.
-
-        Returns:
-            The backing outline object, or None if no outline was created.
-        """
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        curve_eval = curve_obj.evaluated_get(depsgraph)
-
-        backing_curve_data = bpy.data.curves.new(name=f"{shop_name} Outline", type='CURVE')
-        backing_curve_data.dimensions = '2D'
-        backing_curve_data.fill_mode = 'NONE'
-        backing_curve_data.bevel_depth = self.backing_bevel_depth
-
-        created_spline = False
-        for spline in curve_eval.data.splines:
-            if not spline.use_cyclic_u:
-                continue
-
-            poly: List[Tuple[float, float]] = []
-            if hasattr(spline, "evaluated_points") and len(spline.evaluated_points) >= 3:
-                poly = [(pt.co.x, pt.co.y) for pt in spline.evaluated_points]
-            elif spline.type == 'BEZIER' and len(spline.bezier_points) >= 3:
-                poly = [(p.co.x, p.co.y) for p in spline.bezier_points]
-            elif spline.type == 'POLY' and len(spline.points) >= 3:
-                poly = [(p.co.x, p.co.y) for p in spline.points]
-            else:
-                continue
-
-            offset_poly_points = offset_polygon(poly, self.backing_margin)
-            new_spline = backing_curve_data.splines.new('POLY')
-            new_spline.points.add(len(offset_poly_points) - 1)  # One point already exists.
-            for i, (x, y) in enumerate(offset_poly_points):
-                new_spline.points[i].co = (x, y, 0, 1)
-            new_spline.use_cyclic_u = True
-            created_spline = True
-
-        if not created_spline:
-            return None
-
-        backing_obj = bpy.data.objects.new(f"{shop_name} Outline", backing_curve_data)
-        bpy.context.collection.objects.link(backing_obj)
-        # Set the backing object's location and rotation to match the primary curve.
-        backing_obj.location = curve_obj.location.copy()
-        backing_obj.location.z = curve_obj.location.z - 0.05
-        backing_obj.rotation_euler = curve_obj.rotation_euler.copy()  # Copy rotation.
-        self._assign_material(backing_obj, self._create_outline_material())
-        return backing_obj
+        else:
+            self._scale_factor = 1.0
 
     def generate(self) -> Dict[str, bpy.types.Object]:
         """
-        Generate the neon shop name object with optional outline, backing, rotation,
-        location, and dynamic scaling to ensure it fits within a container specified by max_width and max_height.
+        Generate the neon shop name object with optional outline, rotation, location,
+        and dynamic scaling to ensure it fits within the specified max_width and max_height.
 
         Returns:
             A dictionary of the created objects. For example:
                 {
                     "neon": <main neon curve object>,
-                    "outline": <outline object, if created>,
-                    "backing": <backing object, if created>
+                    "outline": <outline object, if created>
                 }
         """
         # Use the provided shop_name if given, else generate a random one.
         shop_name = self.shop_name if self.shop_name is not None else self.generate_shop_name()
         # Create text object at the specified location and rotation.
         text_obj = self._create_text_object(shop_name, self.location, self.rotation)
-        # Convert text to curve.
+        # Convert text to curve without modifying its anchor.
         curve_obj = self._convert_text_to_curve(text_obj)
         # Adjust bezier handles.
         slight_curve_handles(curve_obj, self.curviness)
@@ -555,20 +495,16 @@ class NeonShopNameGenerator:
         for obj in target_objects:
             self._assign_material(obj, neon_material)
 
-        backing_obj = None
-        if self.create_backing:
-            backing_obj = self._create_backing_outline(curve_obj, shop_name)
-            if backing_obj:
-                print(f"Generated backing outline for: {shop_name}")
+        # Optionally assign a different material to the outline.
+        if outline_obj is not None:
+            self._assign_material(outline_obj, self._create_outline_material())
 
-        print(f"Generated and added neon shop name: {shop_name}")
+        print(f"Generated neon shop name: {shop_name}")
 
         # Return a dictionary of created objects.
         result = {"neon": curve_obj}
         if outline_obj is not None:
             result["outline"] = outline_obj
-        if backing_obj is not None:
-            result["backing"] = backing_obj
         return result
 
 
@@ -579,9 +515,6 @@ class NeonShopNameGenerator:
 def generate_sign(create_outline: bool = False,
                   curviness: float = 0.1,
                   remove_interior: bool = False,
-                  create_backing: bool = True,
-                  backing_margin: float = 0.2,
-                  backing_bevel_depth: float = 0.02,
                   max_width: Optional[float] = None,
                   max_height: Optional[float] = None,
                   shop_name: Optional[str] = None,
@@ -595,9 +528,6 @@ def generate_sign(create_outline: bool = False,
         create_outline: Whether to duplicate the curve for an outline effect.
         curviness: Factor controlling bezier handle rounding.
         remove_interior: Whether to remove interior hole shapes.
-        create_backing: Whether to create a backing outline behind the neon text.
-        backing_margin: Offset distance for the backing outline.
-        backing_bevel_depth: Bevel depth for the backing outline.
         max_width: Maximum allowed width (in Blender units) for the generated object.
         max_height: Maximum allowed height (in Blender units) for the generated object.
         shop_name: Optional custom shop name. If provided, it replaces the randomly generated text.
@@ -608,17 +538,13 @@ def generate_sign(create_outline: bool = False,
         A dictionary containing the generated objects. For example:
             {
                 "neon": <main neon curve object>,
-                "outline": <outline object, if created>,
-                "backing": <backing object, if created>
+                "outline": <outline object, if created>
             }
     """
     generator = NeonShopNameGenerator(
         create_outline=create_outline,
         curviness=curviness,
         remove_interior=remove_interior,
-        create_backing=create_backing,
-        backing_margin=backing_margin,
-        backing_bevel_depth=backing_bevel_depth,
         max_width=max_width,
         max_height=max_height,
         shop_name=shop_name,
@@ -637,12 +563,9 @@ if __name__ == '__main__':
         create_outline=False,
         curviness=0.4,
         remove_interior=True,
-        create_backing=True,
-        backing_margin=0.1,
-        backing_bevel_depth=0.01,
         max_width=4.0,
         max_height=2.0,
-        location=(1.0, 2.0, 0.0),
+        location=(0.0, 0.0, 0.0),
         rotation=(0.0, 0.0, 0.0)
     )
     print("Sign objects created:", result)

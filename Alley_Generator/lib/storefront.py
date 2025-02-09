@@ -1,36 +1,15 @@
 """
-Storefront Creation Module
---------------------------
-This module provides the function `create_empty_storefront` that creates a
-storefront geometry in Blender. It is configurable via the following parameters:
+Storefront Creation Module with Neon Sign Integration
+-------------------------------------------------------
+This module creates a storefront geometry in Blender and then spawns a neon sign
+in front of the sign face. The neon sign is generated via a separate library
+("store_sign.py") that is already loaded into Blender’s text editor.
 
-    # Plane Setup
-    plane_size: float = 1.0
-    plane_location: Tuple[float, float, float] = (0, 0, 0)
-    plane_orientation: float = 90  # in degrees
+The neon sign’s maximum width and height are taken from the dimensions of the
+separated sign face, and its location and rotation are matched accordingly.
 
-    # Base Dimensions (original values)
-    # Note: **sign_height** now determines the full height of the sign face.
-    # For a plane of size 1 (extending from -0.5 to +0.5 in Y), the sign
-    # face will extend from Y = 0.5 (top edge) down to Y = (0.5 - sign_height).
-    sign_height: float = 0.25
-    sign_depth: float = 0.1
-    sign_face_depth: float = -0.025
-    sign_border_margin: float = 0.01
-
-    # Pillar widths are now interpreted as the actual pillar widths.
-    pillar_width_left: float = 0.4
-    pillar_width_right: float = 0.4
-    pillar_depth: float = 0.05
-
-    front_face_depth: float = -0.05
-
-    shutter_segments: int = 11
-    shutter_depth: float = 0.005
-    shutter_closed: float = 0.15
-
-Usage Example (from another Blender script):
-    from storefront import create_empty_storefront
+Usage Example:
+    from storefront import create_empty_storefront, spawn_neon_sign
 
     storefront_obj, sign_face_obj = create_empty_storefront(
         plane_size=2.0,
@@ -48,6 +27,8 @@ Usage Example (from another Blender script):
         shutter_depth=0.006,
         shutter_closed=0.18
     )
+    neon_sign_obj = spawn_neon_sign(sign_face_obj)
+    print("Neon Sign Object:", neon_sign_obj.name)
 """
 
 import bpy
@@ -557,6 +538,48 @@ def separate_sign_face(obj: bpy.types.Object) -> bpy.types.Object:
     raise RuntimeError("Failed to separate Mat_Sign_face into a new object.")
 
 # ==============================================================================
+# FUNCTION TO SPAWN A NEON SIGN IN FRONT OF THE SIGN FACE
+# ==============================================================================
+
+def spawn_neon_sign(sign_face_obj: bpy.types.Object) -> bpy.types.Object:
+    """
+    Spawns a neon sign using an external neon sign generation library.
+    The neon sign’s maximum width and height are set to match the sign face’s dimensions,
+    and its location and rotation are matched to the sign face geometry.
+
+    Returns:
+        The neon sign object.
+    """
+    # Use the sign face's dimensions as the maximum size for the neon sign.
+    max_width = sign_face_obj.dimensions.x
+    max_height = sign_face_obj.dimensions.y
+
+    # Compute the world-space center of the sign face geometry.
+    # The bound_box is in local coordinates, so we transform its center into world space.
+    bbox = [Vector(corner) for corner in sign_face_obj.bound_box]
+    center_local = sum(bbox, Vector()) / 8.0
+    world_center = sign_face_obj.matrix_world @ center_local
+
+    # Use the computed center as the location.
+    location = world_center
+
+    # Convert the sign face's rotation (Euler in radians) to degrees.
+    rot = (math.degrees(sign_face_obj.rotation_euler.x),
+           math.degrees(sign_face_obj.rotation_euler.y),
+           math.degrees(sign_face_obj.rotation_euler.z))
+    
+    # Access the neon sign generator module from the text block "store_sign.py".
+    sign = bpy.data.texts["store_sign.py"].as_module()
+    signage = sign.generate_sign(
+        curviness=0.4,
+        max_width=max_width,
+        max_height=max_height,
+        location=location,
+        rotation=rot  # Rotation provided as a tuple in degrees.
+    )
+    return signage
+
+# ==============================================================================
 # PUBLIC FUNCTION
 # ==============================================================================
 
@@ -618,6 +641,10 @@ def create_empty_storefront(
     # Separate the sign face into its own object.
     sign_face_obj = separate_sign_face(obj)
     
+    # Spawn a neon sign in front of the sign face.
+    neon_sign_obj = spawn_neon_sign(sign_face_obj)
+    print("Neon Sign Object:", neon_sign_obj)
+    
     print("Storefront creation completed successfully.")
     return obj, sign_face_obj
 
@@ -626,7 +653,9 @@ def create_empty_storefront(
 # ==============================================================================
 
 if __name__ == '__main__':
-    # This call will create the storefront and separate the sign face.
+    # Create the storefront and separate the sign face.
     storefront_obj, sign_face_obj = create_empty_storefront()
     print("Storefront Object:", storefront_obj.name)
     print("Sign Face Object:", sign_face_obj.name)
+    
+
