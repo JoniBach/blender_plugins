@@ -1,68 +1,3 @@
-"""
-Alley Generator Module
-----------------------
-This module provides the function `generate_alley` which creates an alley of extruded
-building objects with wire looms and joining walls. It also replaces designated ground
-(red) faces with storefronts by calling the `create_empty_storefront()` function from
-a Blender text block (default name "storefront.py").
-
-Additionally, if desired, it can extract the green upper floor (story wall) faces into
-separate objects. To enable this, set the keyword argument `extract_upper_floor=True`.
-
-Parameters (all have default values):
-
-    num_buildings: int = 10
-    min_stories: int = 3
-    max_stories: int = 8
-    extrusion_height: float = 2.0
-    building_depth: float = 2.0
-    min_building_width: float = 1.5
-    max_building_width: float = 3.0
-    spacing: float = 2.0
-    replace_storefront: bool = True
-    storefront_text_name: str = "storefront.py"
-    random_seed: int = 1245
-    merge_threshold: float = 0.0001
-
-    # Wire loom parameters:
-    wire_story_count: int = 1
-    wire_bundle_count: int = 3
-    base_sag: float = 0.3
-    sag_randomness: float = 0.2
-    base_offset: float = 0.2
-    offset_randomness: float = 0.1
-    left_loom_randomness: float = 0.2
-    right_loom_randomness: float = 0.2
-
-    # Floor extrusion parameters:
-    extrude_amount: float = 0
-    ground_floor_separation: float = 1.2
-
-    # New parameter:
-    extract_upper_floor: bool = False  # When True, extracts green (story wall) faces as separate objects.
-
-Usage Example (from another Blender script):
-    
-    import bpy
-    from alley_generator import generate_alley
-
-    final_obj, storefronts, upper_floor_objs = generate_alley(
-        num_buildings=8,
-        extrusion_height=2.5,
-        min_stories=2,
-        max_stories=5,
-        min_building_width=2.0,
-        max_building_width=4.0,
-        spacing=2.0,
-        replace_storefront=True,
-        storefront_text_name="storefront.py",
-        extract_upper_floor=True
-    )
-    print("Alley generated successfully:", final_obj)
-    print("Storefront objects created:", storefronts)
-    print("Upper floor objects created:", upper_floor_objs)
-"""
-
 import bpy
 import bmesh
 import random
@@ -383,17 +318,14 @@ def _replace_storefront_faces(final_obj: bpy.types.Object, storefront_module, in
     return storefront_objects
 
 # -------------------------------------------------------------------------------
-# New Feature: Extract Upper Floor (Green Story Wall) Faces
+# New Feature: Extract Upper Floor (Green Story Wall) Faces with Tower-Specific Tennancy
 # -------------------------------------------------------------------------------
-def _extract_upper_floor_faces(final_obj: bpy.types.Object) -> List[bpy.types.Object]:
+def _extract_upper_floor_faces(final_obj: bpy.types.Object, building_info: List[dict], building_depth: float) -> List[bpy.types.Object]:
     """
-    Extracts the green upper floor faces (the 'story' faces with material index 2)
-    from the final building mesh and replaces them with tennancy windows.
-    
-    For each found face, it calculates the center, an approximate 'plane_size'
-    (based on the longest edge) and an orientation (based on the face normal). Then
-    it deletes the face from the main mesh and creates a new tennancy window by calling
-    the create_blank_tennancy function from the 'tennancy.py' Blender text block.
+    Extracts the green upper floor (story wall) faces and replaces them with tennancy windows.
+    Each face is assigned to a tower based on its Y coordinate, and each tower uses its
+    predetermined variant (assigned during building creation) so that all floors in the tower
+    share the same tennancy style.
     
     Returns:
         A list of new objects representing the tennancy windows.
@@ -403,7 +335,6 @@ def _extract_upper_floor_faces(final_obj: bpy.types.Object) -> List[bpy.types.Ob
     bpy.ops.object.mode_set(mode='EDIT')
     bm = bmesh.from_edit_mesh(final_obj.data)
     upper_faces_data = []
-    # Loop over a copy of bm.faces since we may delete some.
     for face in bm.faces[:]:
         if face.material_index == 2 and abs(face.normal.z) < 0.1 and face.calc_area() > area_threshold:
             center = face.calc_center_median()
@@ -417,11 +348,7 @@ def _extract_upper_floor_faces(final_obj: bpy.types.Object) -> List[bpy.types.Ob
             plane_size = max_edge_length if max_edge_length > 0 else 2.0
             normal_xy = face.normal.copy()
             normal_xy.z = 0
-            if normal_xy.length:
-                normal_xy.normalize()
-                angle = math.degrees(math.atan2(normal_xy.y, normal_xy.x))
-            else:
-                angle = 0
+            angle = math.degrees(math.atan2(normal_xy.y, normal_xy.x)) if normal_xy.length else 0
             upper_faces_data.append({
                 'center': center.copy(),
                 'plane_size': plane_size,
@@ -432,36 +359,52 @@ def _extract_upper_floor_faces(final_obj: bpy.types.Object) -> List[bpy.types.Ob
             face.select = False
 
     # Delete the selected (upper floor) faces from the original mesh.
-    bmesh.ops.delete(bm, geom=[face for face in bm.faces if face.select], context='FACES')
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.select], context='FACES')
     bmesh.update_edit_mesh(final_obj.data)
     bpy.ops.object.mode_set(mode='OBJECT')
-    
-    # Attempt to load the tennancy module from the "tennancy.py" text block.
-    try:
-        tennancy = bpy.data.texts["tennancy.py"].as_module()
-    except KeyError:
-        print("Error: 'tennancy.py' text block not found. Upper floor extraction aborted.")
-        return []
-    
-    # Create a tennancy window for each extracted face using custom parameters.
-    upper_face_objects = []
-    for data in upper_faces_data:
-        window_obj = tennancy.create_blank_tennancy(
-            plane_size=data['plane_size'],
-            plane_location=(data['center'].x, data['center'].y, data['center'].z),
-            # Adjust the rotation so the window aligns with the original face.
-            plane_rotation=(90, 0, data['plane_orientation'] + 90),
-            margin_left=0.4,
-            margin_right=0.4,
-            margin_top=0.2,
-            margin_bottom=0.2,
-            extrude_short=0.03,
-            extrude_long=0.05
-        )
-        print("Tennancy window created successfully:", window_obj)
-        upper_face_objects.append(window_obj)
-    return upper_face_objects
 
+    # Group the extracted faces by tower using the face's Y coordinate.
+    towers_faces = {}  # key: tower_id, value: list of face data
+    for data in upper_faces_data:
+        face_center_y = data['center'].y
+        assigned_tower = None
+        min_dist = float('inf')
+        for tower in building_info:
+            dist = abs(face_center_y - tower['center_y'])
+            if dist < building_depth / 2 and dist < min_dist:
+                min_dist = dist
+                assigned_tower = tower
+        if assigned_tower is not None:
+            tower_id = assigned_tower['tower_id']
+            towers_faces.setdefault(tower_id, []).append(data)
+
+    upper_face_objects = []
+    # Process each tower’s faces using its assigned variant.
+    for tower in building_info:
+        tower_id = tower['tower_id']
+        if tower_id not in towers_faces:
+            continue
+        variant = tower['variant']
+        try:
+            tennancy_module = bpy.data.texts[f"tennancy_{variant}.py"].as_module()
+        except KeyError:
+            print(f"Error: 'tennancy_{variant}.py' text block not found. Upper floor extraction for tower {tower_id} aborted.")
+            continue
+        for data in towers_faces[tower_id]:
+            window_obj = tennancy_module.create_tennancy(
+                plane_size=data['plane_size'],
+                plane_location=(data['center'].x, data['center'].y, data['center'].z),
+                plane_rotation=(90, 0, data['plane_orientation'] + 90),
+                margin_left=0.4,
+                margin_right=0.4,
+                margin_top=0.2,
+                margin_bottom=0.2,
+                extrude_short=0.03,
+                extrude_long=0.05
+            )
+            print(f"Tennancy window created successfully for tower {tower_id} (variant {variant}):", window_obj)
+            upper_face_objects.append(window_obj)
+    return upper_face_objects
 
 # -------------------------------------------------------------------------------
 # Public Function: generate_alley
@@ -500,6 +443,9 @@ def generate_alley(
     Optionally, replace selected ground faces with storefronts (via a Blender text block module)
     and optionally extract green upper floor (story wall) faces into separate objects.
     
+    For each tower, a unique tennancy variant (from 1 to 3) is assigned so that all floors
+    within the tower share the same style while different towers may use different variants.
+    
     Returns:
         A tuple containing:
           - The final joined building object.
@@ -531,6 +477,7 @@ def generate_alley(
         extrude_amount=extrude_amount,
         ground_floor_separation=ground_floor_separation
     )
+    # Seed the global random for other operations.
     random.seed(config.random_seed)
     mats = _setup_materials()
 
@@ -539,8 +486,18 @@ def generate_alley(
     building_info = []
     current_y = 0.0
 
-    # Create each building and its corresponding wire loom.
-    for _ in range(config.num_buildings):
+    # --- Modified Tenant Variant Assignment ---
+    # Use a dedicated RNG for tenant variant assignment so that it is solely based on config.random_seed.
+    tenant_rng = random.Random(config.random_seed)
+    available_variants = list(range(1, 5))
+    if config.num_buildings <= len(available_variants):
+        tower_variants = tenant_rng.sample(available_variants, config.num_buildings)
+    else:
+        tower_variants = [tenant_rng.choice(available_variants) for _ in range(config.num_buildings)]
+    # ------------------------------------------------
+
+    # Create each building (tower) and its corresponding wire loom.
+    for i in range(config.num_buildings):
         building_width = random.uniform(config.min_building_width, config.max_building_width)
         num_extrusions = random.randint(config.min_stories, config.max_stories)
         building_height = (num_extrusions + 1) * config.extrusion_height
@@ -550,10 +507,12 @@ def generate_alley(
                                  building_location)
         building_objs.append(b_obj)
         building_info.append({
+            'tower_id': i,
             'center_y': current_y,
             'width': building_width,
             'height': building_height,
-            'extrusions': num_extrusions
+            'extrusions': num_extrusions,
+            'variant': tower_variants[i]
         })
         loom_obj = _create_wire_loom(building_location, building_width,
                                      config.extrusion_height, num_extrusions, config)
@@ -593,7 +552,7 @@ def generate_alley(
 
     upper_floor_objects = []
     if extract_upper_floor:
-        upper_floor_objects = _extract_upper_floor_faces(final_building_obj)
+        upper_floor_objects = _extract_upper_floor_faces(final_building_obj, building_info, config.building_depth)
 
     return final_building_obj, storefront_objects, upper_floor_objects
 
